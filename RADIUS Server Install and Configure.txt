@@ -1,0 +1,148 @@
+Prerequisites
+--------------
+Ubuntu Server 20.04 LTS
+
+sudo apt install net-tools
+
+# Update System
+
+sudo apt update
+sudo apt upgrade
+
+
+# Install LAMP Stack (Linux,Apache,MySQL,PHP)
+
+1-Install Apache Web Server
+
+sudo apt -y install apache2
+sudo systemctl enable --now apache2
+sudo ufw allow Apache		or	sudo ufw allow WWW
+
+2-Install PHP & Additional PHP Modules
+sudo apt -y install php libapache2-mod-php php-{gd,common,mail,mail-mime,mysql,pear,db,mbstring,xml,curl}
+php -v
+sudo nano /var/www/html/phpinfo.php
+
+<?php
+
+phpinfo( );
+
+?>
+
+sudo rm /var/www/html/phpinfo.php
+
+3-Install MySQL or MariaDB
+sudo apt -y install mariadb-server
+sudo mysql_secure_installation
+sudo systemctl enable --now mariadb.service
+sudo systemctl restart mariadb.service
+
+#Install and Configure FreeRADIUS
+1- Install FreeRADIUS
+sudo apt -y install freeradius freeradius-mysql freeradius-utils -y
+
+2-Test the FreeRADIUS Server
+sudo systemctl stop freeradius
+sudo freeradius -X
+
+3-Allow FreeRADIUS in Firewall
+sudo systemctl enable --now freeradius
+sudo ufw allow to any port 1812 proto udp
+sudo ufw allow to any port 1813 proto udp
+
+4-Create Database and DB User Account
+sudo mysql -u root -p
+MariaDB [(none)]> CREATE DATABASE radius;
+MariaDB [(none)]> GRANT ALL ON radius.* TO radius@localhost IDENTIFIED BY "helloworld";
+MariaDB [(none)]> FLUSH PRIVILEGES;
+MariaDB [(none)]> quit;
+
+5- Input Database Table and configure RADIUS Database
+sudo su -
+mysql -u root -p radius < /etc/freeradius/3.0/mods-config/sql/main/mysql/schema.sql
+sudo su - user
+sudo mysql -u root -p -e "use radius;show tables;"
+sudo ln -s /etc/freeradius/3.0/mods-available/sql /etc/freeradius/3.0/mods-enabled/
+sudo apt install nano
+sudo nano /etc/freeradius/3.0/mods-enabled/sql
+
+- Change dialect = "sqlite" to dialect = "mysql"
+- Change driver = "rlm_sql_null" to driver = "rlm_sql_${dialect}"
+- Disable TLS Cert
+
+mysql {
+    # If any of the files below are set, TLS encryption is enabled
+    # tls {
+    #       ca_file = "/etc/ssl/certs/my_ca.crt"
+    #       ca_path = "/etc/ssl/certs/"
+    #       certificate_file = "/etc/ssl/certs/private/client.crt"
+    #       private_key_file = "/etc/ssl/certs/private/client.key"
+    #       cipher = "DHE-RSA-AES256-SHA:AES128-SHA"
+
+    #       tls_required = yes
+    #       tls_check_cert = no
+    #       tls_check_cert_cn = no
+    #}
+
+    # If yes, (or auto and libmysqlclient reports warnings are
+    # available), will retrieve and log additional warnings from
+    # the server if an error has occured. Defaults to 'auto'
+    warnings = auto
+}
+
+
+# Connection info:
+#
+server = "localhost"
+port = 3306
+login = "radius"
+password = "helloworld"
+
+radius_db = "radius"
+
+read_clients = yes
+
+client_table = "nas"
+
+sudo chgrp -h freerad /etc/freeradius/3.0/mods-available/sql
+sudo chown -R freerad:freerad /etc/freeradius/3.0/mods-enabled/sql
+
+sudo systemctl restart freeradius.service
+sudo systemctl stop freeradius.service
+sudo freeradius -X
+sudo systemctl start freeradius.service
+
+#Install & Configure daloRADIUS (FreeRADIUS GUI)
+sudo apt -y install wget unzip
+	
+unzip master.zip
+cd daloradius-master
+sudo mysql -u root -p radius < contrib/db/fr2-mysql-daloradius-and-freeradius.sql
+sudo mysql -u root -p radius < contrib/db/mysql-daloradius.sql
+cd ..
+sudo mv daloradius-master /var/www/html/daloradius
+sudo chown -R www-data:www-data /var/www/html/daloradius/
+
+sudo cp /var/www/html/daloradius/library/daloradius.conf.php.sample /var/www/html/daloradius/library/daloradius.conf.php
+
+sudo chmod 664 /var/www/html/daloradius/library/daloradius.conf.php
+sudo vim /var/www/html/daloradius/library/daloradius.conf.php
+$configValues['CONFIG_DB_USER'] = 'radius';
+$configValues['CONFIG_DB_PASS'] = 'helloworld';
+$configValues['CONFIG_DB_NAME'] = 'radius'
+
+sudo systemctl restart freeradius.service apache2
+
+#Access daloRADIUS
+http://server_ip_address/daloradius
+
+#Default daloRADIUS username/password
+username: administrator
+password: radius
+
+#Testing FreeRADIUS & daloRADIUS
+sudo freeradius -X
+NTRadPing
+
+
+
